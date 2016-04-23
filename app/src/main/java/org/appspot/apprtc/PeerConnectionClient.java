@@ -251,7 +251,6 @@ public class PeerConnectionClient {
     }
 
     public void createPeerConnection(
-            final EGLContext renderEGLContext,
             final VideoRenderer.Callbacks localRender,
             final VideoRenderer.Callbacks remoteRender,
             final SignalingParameters signalingParameters) {
@@ -266,7 +265,7 @@ public class PeerConnectionClient {
             @Override
             public void run() {
                 createMediaConstraintsInternal();
-                createPeerConnectionInternal(renderEGLContext);
+                createPeerConnectionInternal();
             }
         });
     }
@@ -417,7 +416,7 @@ public class PeerConnectionClient {
         }
     }
 
-    private void createPeerConnectionInternal(EGLContext renderEGLContext) {
+    private void createPeerConnectionInternal() {
         if (factory == null || isError) {
             Log.e(TAG, "Peerconnection factory is not created");
             return;
@@ -430,10 +429,6 @@ public class PeerConnectionClient {
         }
         queuedRemoteCandidates = new LinkedList<IceCandidate>();
 
-        if (videoCallEnabled) {
-            Log.d(TAG, "EGLContext: " + renderEGLContext);
-            factory.setVideoHwAccelerationOptions(renderEGLContext);
-        }
 
         PeerConnection.RTCConfiguration rtcConfig =
                 new PeerConnection.RTCConfiguration(signalingParameters.iceServers);

@@ -15,8 +15,8 @@ package com.androidhacks7.apprtc_android.utils;
  */
 public class ServerConfiguration {
 
-    public static final String REGISTRATION_URL = "http://192.168.8.16:8080/userRegistration";
+    public static final String REGISTRATION_URL = "http://192.168.23.204:8080/userRegistration";
 
-    public static final String SOCKET_ENDPOINT = "http://192.168.8.16:7777";
+    public static final String SOCKET_ENDPOINT = "http://192.168.23.204:7777";
 
 }

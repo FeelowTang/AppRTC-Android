@@ -193,8 +193,7 @@ public class PeerConnectionManager implements PeerConnectionClient.PeerConnectio
                 ArrayList<PeerConnection.IceServer> iceServers = new ArrayList<>();
                 iceServers.add(stunServer);
                 Log.i(TAG, "Creating peer connection");
-                peerConnectionClient.createPeerConnection(VideoRendererGui.getEGLContext(),
-                        localRender, remoteRender, new SignalingParameters(iceServers, initiator));
+                peerConnectionClient.createPeerConnection(localRender, remoteRender, new SignalingParameters(iceServers, initiator));
 
                 if (initiator) {
                     Log.i(TAG, "Creating OFFER...");

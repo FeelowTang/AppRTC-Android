@@ -25,3 +25,16 @@ proguard/
 
 # Log Files
 *.log
+/.idea/libraries/Java_WebSocket_1_3_0.xml
+/.idea/libraries/engine_io_client_0_4_1.xml
+/.idea/libraries/libjingle_peerconnection.xml
+/.idea/libraries/library_1_0_19.xml
+/.idea/libraries/socket_io_client_0_4_2.xml
+/.idea/compiler.xml
+/.idea/encodings.xml
+/.idea/gradle.xml
+/.idea/misc.xml
+/.idea/modules.xml
+/.idea/runConfigurations.xml
+/.idea/vcs.xml
+/.idea/workspace.xml
