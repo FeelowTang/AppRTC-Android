@@ -10,16 +10,17 @@
 
 package com.androidhacks7.apprtc_android;
 
-import com.androidhacks7.apprtc_android.utils.AppConstants;
-import com.androidhacks7.apprtc_android.utils.ServerConfiguration;
-import com.androidhacks7.apprtc_android.listeners.CallListener;
-import com.androidhacks7.apprtc_android.listeners.Receiver;
-import com.androidhacks7.apprtc_android.listeners.SocketMessageListener;
-import com.github.nkzawa.emitter.Emitter;
-import com.github.nkzawa.socketio.client.IO;
-import com.github.nkzawa.socketio.client.Socket;
+import android.util.Log;
 
-import java.net.URISyntaxException;
+import com.androidhacks7.apprtc_android.utils.ServerConfiguration;
+import com.androidhacks7.apprtc_android.listeners.SignalingListener;
+import com.androidhacks7.apprtc_android.listeners.SocketMessageListener;
+import com.google.gson.Gson;
+import com.google.gson.GsonBuilder;
+import com.google.gson.JsonObject;
+import com.koushikdutta.async.future.FutureCallback;
+import com.koushikdutta.async.http.AsyncHttpClient;
+import com.koushikdutta.async.http.WebSocket;
 
 /**
  * Created by androidhacks7 on 12/19/2015.
@@ -30,10 +31,13 @@ public class SocketManager {
 
     private static SocketManager instance = null;
 
-    private Socket mSocket;
+    private WebSocket mSocket;
 
     private SocketMessageListener socketMessageListener;
-    private CallListener callListener;
+    private SignalingListener signalingListener;
+
+    private static final Gson gson = new GsonBuilder().create();
+
 
     private SocketManager() {
     }
@@ -46,71 +50,69 @@ public class SocketManager {
     }
 
     public void init() {
-        try {
-            mSocket = IO.socket(ServerConfiguration.SOCKET_ENDPOINT);
-        } catch (URISyntaxException e) {
+            AsyncHttpClient.getDefaultInstance().websocket(ServerConfiguration.SOCKET_ENDPOINT,
+                    null, null).then(new FutureCallback<WebSocket>() {
+
+                @Override
+                public void onCompleted(Exception e, WebSocket result) {
+                    if (e != null) {
+                        Log.d(TAG,"connect to " +
+                                ServerConfiguration.SOCKET_ENDPOINT + " failed");
+                        e.printStackTrace();
+                        return;
+                    }
+                    mSocket = result;
+                    mSocket.setStringCallback(new One2OneStringCallback());
+                    Log.d(TAG,"connect to " +
+                            ServerConfiguration.SOCKET_ENDPOINT + " completed");
+                }
+            });
+    }
+
+    private class One2OneStringCallback implements WebSocket.StringCallback {
+        @Override
+        public void onStringAvailable(String s) {
+            Log.i(TAG,"Incoming msg:" + s);
+
+            if (signalingListener == null) {
+                return ;
+            }
+
+            JsonObject jsonMessage = gson.fromJson(s, JsonObject.class);
+            switch (jsonMessage.get("id").getAsString()) {
+                case "registerResponse":
+                    signalingListener.onRegisterResponse(jsonMessage);
+                    break;
+                case "callResponse":
+                    signalingListener.onCallResponse(jsonMessage);
+                    break;
+                case "startCommunication":
+                    signalingListener.onStartCommunication(jsonMessage);
+                    break;
+                case "incomingCall":
+                   signalingListener.onCallReceived(jsonMessage);
+                    break;
+                case "iceCandidate":
+                    signalingListener.onIceCandidate(jsonMessage);
+                    break;
+                case "getUserListResponse":
+                    signalingListener.onUserList(jsonMessage);
+                    break;
+                default:
+                    break;
+            }
         }
-        mSocket.connect();
-        initCallbacks();
     }
 
-    public void setReceiver(Receiver receiver) {
-        if (receiver instanceof CallListener) {
-            this.callListener = (CallListener) receiver;
-        } else {
-            this.socketMessageListener = (SocketMessageListener) receiver;
-        }
+    public void setReceiver(SignalingListener receiver) {
+        this.signalingListener = (SignalingListener) receiver;
     }
 
-    public String getSocketId() {
-        return mSocket.id();
+
+
+    public void onSend(String message) {
+        Log.i(this.getClass().toString(),"Sending msg:" + message);
+        mSocket.send(message);
     }
 
-    private void initCallbacks() {
-        mSocket.on(AppConstants.INCOMING_CALL, new Emitter.Listener() {
-            @Override
-            public void call(Object... args) {
-                callListener.onCallReceived(args);
-            }
-        });
-
-        mSocket.on(AppConstants.RECEIVER_ACCEPTED_CALL, new Emitter.Listener() {
-            @Override
-            public void call(Object... args) {
-                socketMessageListener.onMessage(SocketMessageListener.SocketMessage.ACCEPT, args);
-            }
-        });
-
-        mSocket.on(AppConstants.RECEIVER_REJECTED_CALL, new Emitter.Listener() {
-            @Override
-            public void call(Object... args) {
-                socketMessageListener.onMessage(SocketMessageListener.SocketMessage.REJECT, args);
-            }
-        });
-
-        mSocket.on(AppConstants.REMOTE_SDP_RECEIVED, new Emitter.Listener() {
-            @Override
-            public void call(Object... args) {
-                socketMessageListener.onMessage(SocketMessageListener.SocketMessage.SDP, args);
-            }
-        });
-
-        mSocket.on(AppConstants.ICE_CANDIDATE_RECEIVED, new Emitter.Listener() {
-            @Override
-            public void call(Object... args) {
-                socketMessageListener.onMessage(SocketMessageListener.SocketMessage.ICE, args);
-            }
-        });
-
-        mSocket.on(AppConstants.DISCONNECT, new Emitter.Listener() {
-            @Override
-            public void call(Object... args) {
-                socketMessageListener.onMessage(SocketMessageListener.SocketMessage.DISCONNECT, args);
-            }
-        });
-    }
-
-    public void onSend(String message, Object... args) {
-        mSocket.emit(message, args);
-    }
 }

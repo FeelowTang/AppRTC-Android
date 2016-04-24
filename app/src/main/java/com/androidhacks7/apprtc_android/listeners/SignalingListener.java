@@ -10,8 +10,23 @@
 
 package com.androidhacks7.apprtc_android.listeners;
 
+import com.google.gson.JsonObject;
+
 /**
  * Created by androidhacks7 on 12/24/2015.
  */
-public interface Receiver {
+public interface SignalingListener {
+
+    public void onCallReceived(JsonObject jsonObject);
+
+    public void onUserList(JsonObject jsonObject);
+
+    public void onRegisterResponse(JsonObject jsonObject);
+
+    public void onCallResponse(JsonObject jsonObject);
+
+    public void onIceCandidate(JsonObject jsonObject);
+
+    public void onStartCommunication(JsonObject jsonObject);
+
 }

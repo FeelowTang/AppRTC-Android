@@ -15,25 +15,22 @@ import android.app.AlertDialog;
 import android.content.DialogInterface;
 import android.content.Intent;
 import android.os.Bundle;
-import android.provider.Settings;
 import android.util.Log;
 import android.view.View;
 import android.widget.AdapterView;
 import android.widget.ArrayAdapter;
 import android.widget.EditText;
 import android.widget.ListView;
+import android.widget.ProgressBar;
 import android.widget.RelativeLayout;
 
-import com.android.volley.Request;
-import com.android.volley.RequestQueue;
-import com.android.volley.Response;
-import com.android.volley.VolleyError;
-import com.android.volley.toolbox.JsonObjectRequest;
-import com.android.volley.toolbox.Volley;
 import com.androidhacks7.apprtc_android.utils.AppConstants;
 import com.androidhacks7.apprtc_android.utils.JSONConstants;
-import com.androidhacks7.apprtc_android.utils.ServerConfiguration;
-import com.androidhacks7.apprtc_android.listeners.CallListener;
+import com.androidhacks7.apprtc_android.listeners.SignalingListener;
+import com.google.gson.JsonArray;
+import com.google.gson.JsonElement;
+import com.google.gson.JsonObject;
+import com.google.gson.JsonPrimitive;
 
 import org.json.JSONArray;
 import org.json.JSONException;
@@ -44,22 +41,25 @@ import java.util.ArrayList;
 /**
  * Created by androidhacks7 on 12/24/2015.
  */
-public class RegistrationActivity extends Activity implements CallListener {
+public class RegistrationActivity extends Activity implements SignalingListener {
 
     private EditText userName;
 
     private static final String TAG = RegistrationActivity.class.getSimpleName();
 
     private String currentUser;
+    ProgressBar progressBar;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_registration);
         SocketManager socketManager = SocketManager.getInstance();
+
         socketManager.setReceiver(this);
         socketManager.init();
         showUserDialog(AppConstants.DIALOG_USERNAME, null);
+        progressBar = new ProgressBar(this);
     }
 
     private void showUserDialog(int type, final Object... args) {
@@ -84,7 +84,7 @@ public class RegistrationActivity extends Activity implements CallListener {
                     finish();
                 }
             });
-        } else if (type == 1) {
+        } else if (type == AppConstants.DIALOG_ACCEPT_REJECT) {
             try {
                 final JSONObject jsonObject = new JSONObject(args[0].toString());
                 builder.setMessage("Incoming call from " + jsonObject.get(JSONConstants.CALLER));
@@ -93,6 +93,7 @@ public class RegistrationActivity extends Activity implements CallListener {
                     public void onClick(DialogInterface dialogInterface, int i) {
                         Intent intent = new Intent(RegistrationActivity.this, VideoCallActivity.class);
                         intent.putExtra(JSONConstants.CALL_PARAMS, args[0].toString());
+                        intent.putExtra(JSONConstants.REJECT_CALL, false);
                         startActivity(intent);
                         finish();
                     }
@@ -100,10 +101,11 @@ public class RegistrationActivity extends Activity implements CallListener {
                 builder.setNegativeButton("Decline", new DialogInterface.OnClickListener() {
                     @Override
                     public void onClick(DialogInterface dialogInterface, int i) {
-                        Intent intent = new Intent(RegistrationActivity.this, VideoCallActivity.class);
-                        intent.putExtra(JSONConstants.CALL_PARAMS, args[0].toString());
-                        intent.putExtra(JSONConstants.REJECT_CALL, args[0].toString());
-                        startActivity(intent);
+                        try {
+                            declineCall(jsonObject.get(JSONConstants.CALLER).toString());
+                        } catch (JSONException e) {
+                            e.printStackTrace();
+                        }
                     }
                 });
             } catch (JSONException e) {
@@ -113,43 +115,39 @@ public class RegistrationActivity extends Activity implements CallListener {
         builder.create().show();
     }
 
-    private void register() {
-        RequestQueue queue = Volley.newRequestQueue(this);
-        JSONObject userParams = new JSONObject();
+    private void declineCall(String caller) {
         try {
-            currentUser = userName.getText().toString();
-            userParams.put(JSONConstants.USER_NAME, currentUser);
-            userParams.put(JSONConstants.DEVICE_ID, Settings.Secure.getString(getContentResolver(),
-                    Settings.Secure.ANDROID_ID));
-            userParams.put(JSONConstants.SOCKET_ID, SocketManager.getInstance().getSocketId());
-        } catch (JSONException e) {
+            JSONObject jsonObject = new JSONObject();
+
+            jsonObject.put("id", "incomingCallResponse");
+            jsonObject.put("from", caller);
+            jsonObject.put("callResponse", "reject");
+            SocketManager.getInstance().onSend(jsonObject.toString());
+        } catch (Exception e) {
             e.printStackTrace();
         }
-        JsonObjectRequest request = new JsonObjectRequest(Request.Method.POST, ServerConfiguration.REGISTRATION_URL, userParams, new Response.Listener<JSONObject>() {
-            @Override
-            public void onResponse(JSONObject response) {
-                Log.i(TAG, "User registration successful");
-                parseUserList(response);
-            }
-        }, new Response.ErrorListener() {
-            @Override
-            public void onErrorResponse(VolleyError error) {
-                Log.e(TAG, "User registration error " + error.getMessage());
-            }
-        });
-        queue.add(request);
     }
 
-    private void parseUserList(JSONObject jsonObject) {
+    private void register() {
+        currentUser = userName.getText().toString();
+        JsonObject register = new JsonObject();
+        register.addProperty("id", "register");
+        register.addProperty("name", userName.getText().toString());
+
+        SocketManager socketManager = SocketManager.getInstance();
+
+        socketManager.onSend(register.toString());
+    }
+
+    private void parseUserList(JsonObject jsonObject) {
         ArrayList<String> userNames = new ArrayList<String>();
-        try {
-            JSONArray jsonArray = jsonObject.getJSONArray(JSONConstants.USERS);
-            for (int i = 0; i < jsonArray.length(); i++) {
-                JSONObject user = (JSONObject) jsonArray.get(i);
-                userNames.add((String) user.get(JSONConstants.USER_NAME));
+
+        JsonArray jsonArray = jsonObject.getAsJsonArray("response");
+        for (int i = 0; i < jsonArray.size(); i++) {
+            JsonElement user = jsonArray.get(i);
+            if (!userName.getText().toString().equals(user.getAsString())) {
+                userNames.add((String) user.getAsString());
             }
-        } catch (JSONException e) {
-            e.printStackTrace();
         }
         updateUI(userNames);
     }
@@ -162,13 +160,10 @@ public class RegistrationActivity extends Activity implements CallListener {
             public void onItemClick(AdapterView<?> adapterView, View view, int i, long l) {
                 Log.d(TAG, "Initiating call to " + userNames.get(i));
                 Intent intent = new Intent(RegistrationActivity.this, VideoCallActivity.class);
-                JSONObject jsonObject = new JSONObject();
-                try {
-                    jsonObject.put(JSONConstants.CALLER, currentUser);
-                    jsonObject.put(JSONConstants.RECEIVER, userNames.get(i));
-                } catch (JSONException e) {
-                    e.printStackTrace();
-                }
+                JsonObject jsonObject = new JsonObject();
+                jsonObject.addProperty(JSONConstants.CALLER, currentUser);
+                jsonObject.addProperty(JSONConstants.RECEIVER, userNames.get(i));
+
                 intent.putExtra(JSONConstants.MAKE_CALL, true);
                 intent.putExtra(JSONConstants.CALL_PARAMS, jsonObject.toString());
                 startActivity(intent);
@@ -177,13 +172,55 @@ public class RegistrationActivity extends Activity implements CallListener {
         });
     }
 
+
     @Override
-    public void onCallReceived(final Object... args) {
+    public void onCallReceived(final JsonObject jsonObject) {
         runOnUiThread(new Runnable() {
             @Override
             public void run() {
-                showUserDialog(AppConstants.DIALOG_ACCEPT_REJECT, args);
+                showUserDialog(AppConstants.DIALOG_ACCEPT_REJECT, jsonObject);
             }
         });
+    }
+
+    @Override
+    public void onUserList(final JsonObject jsonObject) {
+        runOnUiThread(new Runnable() {
+            @Override
+            public void run() {
+                parseUserList(jsonObject);
+            }
+        });
+    }
+
+    @Override
+    public void onRegisterResponse(JsonObject jsonObject) {
+        runOnUiThread(new Runnable() {
+            @Override
+            public void run() {
+                progressBar.setVisibility(View.VISIBLE);
+                //get User list
+                JsonObject jsonObject = new JsonObject();
+                jsonObject.addProperty("id", "getUserList");
+                jsonObject.addProperty("name", userName.getText().toString());
+                SocketManager socketManager = SocketManager.getInstance();
+                socketManager.onSend(jsonObject.toString());
+            }
+        });
+    }
+
+    @Override
+    public void onCallResponse(JsonObject jsonObject) {
+
+    }
+
+    @Override
+    public void onIceCandidate(JsonObject jsonObject) {
+
+    }
+
+    @Override
+    public void onStartCommunication(JsonObject jsonObject) {
+
     }
 }

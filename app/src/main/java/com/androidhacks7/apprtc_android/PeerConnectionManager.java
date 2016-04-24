@@ -14,10 +14,13 @@ import android.app.Activity;
 import android.content.Context;
 import android.util.Log;
 
+import com.androidhacks7.apprtc_android.listeners.SignalingListener;
 import com.androidhacks7.apprtc_android.model.SignalingParameters;
 import com.androidhacks7.apprtc_android.utils.AppConstants;
 import com.androidhacks7.apprtc_android.utils.JSONConstants;
 import com.androidhacks7.apprtc_android.listeners.SocketMessageListener;
+import com.google.gson.Gson;
+import com.google.gson.JsonObject;
 
 import org.appspot.apprtc.PeerConnectionClient;
 import org.json.JSONException;
@@ -35,7 +38,8 @@ import java.util.ArrayList;
 /**
  * Created by androidhacks7 on 12/24/2015.
  */
-public class PeerConnectionManager implements PeerConnectionClient.PeerConnectionEvents {
+public class PeerConnectionManager implements PeerConnectionClient.PeerConnectionEvents,
+        SignalingListener {
 
     private static final String TAG = PeerConnectionManager.class.getSimpleName();
 
@@ -46,9 +50,10 @@ public class PeerConnectionManager implements PeerConnectionClient.PeerConnectio
     private PeerConnectionClient.PeerConnectionParameters peerConnectionParameters;
 
     private String caller, receiver;
+    boolean isCaller;
     private boolean iceConnected;
 
-    private SocketMessageListener socketMessageListener = new SocketMessageHandler();
+    //  private SocketMessageListener socketMessageListener = new SocketMessageHandler();
 
     public PeerConnectionManager(Context context) {
         this.context = context;
@@ -65,7 +70,7 @@ public class PeerConnectionManager implements PeerConnectionClient.PeerConnectio
                 false,
                 0, 0, 0, 0, "VP9", true, 0, "OPUS", true, false);
 
-        SocketManager.getInstance().setReceiver(socketMessageListener);
+        isCaller = true;
     }
 
     public void createPeerConnectionFactory(final Context context) {
@@ -107,19 +112,21 @@ public class PeerConnectionManager implements PeerConnectionClient.PeerConnectio
             public void run() {
                 JSONObject sdpObject = new JSONObject();
                 try {
-                    sdpObject.put(JSONConstants.SDP_TYPE, sdp.type);
-                    sdpObject.put(JSONConstants.SDP, sdp.description);
-                    if (sdp.type == SessionDescription.Type.OFFER) {
+                    if (isCaller) {
+                        sdpObject.put("id", "call");
+
                         sdpObject.put(JSONConstants.CALLER, caller);
                         sdpObject.put(JSONConstants.RECEIVER, receiver);
                     } else {
-                        sdpObject.put(JSONConstants.CALLER, receiver);
-                        sdpObject.put(JSONConstants.RECEIVER, caller);
+                        sdpObject.put("id", "incomingCallResponse");
+                        sdpObject.put("callResponse", "accept");
+                        sdpObject.put(JSONConstants.CALLER, caller);
                     }
+                    sdpObject.put(JSONConstants.SDP + JSONConstants.OFFER, sdp.description);
                 } catch (JSONException e) {
                     e.printStackTrace();
                 }
-                SocketManager.getInstance().onSend(AppConstants.SEND_SDP, sdpObject);
+                SocketManager.getInstance().onSend(sdpObject.toString());
             }
         });
     }
@@ -129,17 +136,20 @@ public class PeerConnectionManager implements PeerConnectionClient.PeerConnectio
         runOnUiThread(new Runnable() {
             @Override
             public void run() {
+                JSONObject onIceObject = new JSONObject();
                 JSONObject iceObject = new JSONObject();
                 try {
+                    onIceObject.put("id", "onIceCandidate");
+                    iceObject.put(JSONConstants.CANDIDATE, candidate.sdp);
+
                     iceObject.put(JSONConstants.SDP_MID, candidate.sdpMid);
-                    iceObject.put(JSONConstants.CANDIDATE, candidate.sdp.replace(JSONConstants.CANDIDATE, "a=candidate"));
                     iceObject.put(JSONConstants.SDP_MID_LINE_INDEX, candidate.sdpMLineIndex);
-                    iceObject.put(JSONConstants.CALLER, caller);
-                    iceObject.put(JSONConstants.RECEIVER, receiver);
+                    onIceObject.put(JSONConstants.CANDIDATE, iceObject);
+
                 } catch (JSONException e) {
                     e.printStackTrace();
                 }
-                SocketManager.getInstance().onSend(AppConstants.SEND_ICE_CANDIDATE, iceObject);
+                SocketManager.getInstance().onSend(onIceObject.toString());
             }
         });
     }
@@ -189,18 +199,14 @@ public class PeerConnectionManager implements PeerConnectionClient.PeerConnectio
                     Log.w(TAG, "Room is connected, but EGL context is not ready yet.");
                     return;
                 }
-                PeerConnection.IceServer stunServer = new PeerConnection.IceServer("stun:stun.l.google.com:19302", "", "");
+                //     PeerConnection.IceServer stunServer = new PeerConnection.IceServer("stun:stun.l.google.com:19302", "", "");
                 ArrayList<PeerConnection.IceServer> iceServers = new ArrayList<>();
-                iceServers.add(stunServer);
+                //   iceServers.add(stunServer);
                 Log.i(TAG, "Creating peer connection");
                 peerConnectionClient.createPeerConnection(localRender, remoteRender, new SignalingParameters(iceServers, initiator));
-
-                if (initiator) {
-                    Log.i(TAG, "Creating OFFER...");
-                    // Create offer. Offer SDP will be sent to answering client in
-                    // PeerConnectionEvents.onLocalDescription event.
-                    peerConnectionClient.createOffer();
-                }
+                isCaller = initiator;
+                Log.i(TAG, "Creating OFFER...");
+                peerConnectionClient.createOffer();
             }
         });
     }
@@ -249,7 +255,7 @@ public class PeerConnectionManager implements PeerConnectionClient.PeerConnectio
             } catch (JSONException e) {
                 e.printStackTrace();
             }
-            SocketManager.getInstance().onSend(AppConstants.DISCONNECT, disconnect);
+            //        SocketManager.getInstance().onSend(AppConstants.DISCONNECT, disconnect);
         }
         if (peerConnectionClient != null) {
             peerConnectionClient.close();
@@ -272,6 +278,66 @@ public class PeerConnectionManager implements PeerConnectionClient.PeerConnectio
 
     private void runOnUiThread(Runnable runnable) {
         ((Activity) context).runOnUiThread(runnable);
+    }
+
+    @Override
+    public void onCallReceived(JsonObject jsonObject) {
+
+    }
+
+    @Override
+    public void onUserList(JsonObject jsonObject) {
+
+    }
+
+    @Override
+    public void onRegisterResponse(JsonObject jsonObject) {
+
+    }
+
+    @Override
+    public void onCallResponse(final JsonObject jsonObject) {
+        runOnUiThread(new Runnable() {
+            @Override
+            public void run() {
+                //get remote sdp answer
+                String sdpObject = jsonObject.get(JSONConstants.SDP + JSONConstants.ANSWER).getAsString();
+                Log.d(TAG, "Remote SDP received " + sdpObject);
+
+                SessionDescription sessionDescription = new SessionDescription(SessionDescription.Type.ANSWER, sdpObject);
+                onRemoteDescription(sessionDescription, false);
+            }
+        });
+    }
+
+    @Override
+    public void onIceCandidate(final JsonObject jsonObject) {
+        runOnUiThread(new Runnable() {
+            @Override
+            public void run() {
+                JsonObject iceCandiateJson = jsonObject.getAsJsonObject(JSONConstants.CANDIDATE);
+                IceCandidate iceCandidate = new IceCandidate(iceCandiateJson.get(JSONConstants.SDP_MID).getAsString(),
+                        iceCandiateJson.get(JSONConstants.SDP_MID_LINE_INDEX).getAsInt(),
+                        iceCandiateJson.get(JSONConstants.CANDIDATE).getAsString());
+                Log.d(TAG, "ICE Candidate received " + iceCandidate);
+                onRemoteIceCandidate(iceCandidate);
+            }
+        });
+    }
+
+    @Override
+    public void onStartCommunication(final JsonObject jsonObject) {
+        runOnUiThread(new Runnable() {
+            @Override
+            public void run() {
+                //get remote sdp answer
+                String sdpObject = jsonObject.get(JSONConstants.SDP + JSONConstants.ANSWER).getAsString();
+                Log.d(TAG, "Remote SDP received " + sdpObject);
+
+                SessionDescription sessionDescription = new SessionDescription(SessionDescription.Type.ANSWER, sdpObject);
+                onRemoteDescription(sessionDescription, false);
+            }
+        });
     }
 
     private class SocketMessageHandler implements SocketMessageListener {
@@ -321,39 +387,20 @@ public class PeerConnectionManager implements PeerConnectionClient.PeerConnectio
     }
 
     public void makeCall(Object... args) {
+        JsonObject jsonObject = new Gson().fromJson(args[0].toString(), JsonObject.class);
+        this.caller = (String) jsonObject.get(JSONConstants.CALLER).getAsString();
+        this.receiver = (String) jsonObject.get(JSONConstants.RECEIVER).getAsString();
+
+        onConnectedToRoom(true);
+    }
+
+    public void acceptCall(Object... args) {
         try {
             JSONObject jsonObject = new JSONObject(args[0].toString());
             this.caller = (String) jsonObject.get(JSONConstants.CALLER);
-            this.receiver = (String) jsonObject.get(JSONConstants.RECEIVER);
+            onConnectedToRoom(false);
         } catch (JSONException e) {
             e.printStackTrace();
         }
-
-        JSONObject callObject = new JSONObject();
-        try {
-            callObject.put(JSONConstants.CALLER, caller);
-            callObject.put(JSONConstants.RECEIVER, receiver);
-        } catch (JSONException e) {
-            e.printStackTrace();
-        }
-        SocketManager.getInstance().onSend(AppConstants.MAKE_CALL, callObject);
-    }
-
-    public void acceptRejectCall(boolean status, Object... args) {
-        JSONObject objectToSend = new JSONObject();
-        try {
-            JSONObject jsonObject = new JSONObject(args[0].toString());
-            if (status) {
-                this.caller = (String) jsonObject.get(JSONConstants.CALLER);
-                this.receiver = (String) jsonObject.get(JSONConstants.RECEIVER);
-                onConnectedToRoom(false);
-            }
-            objectToSend.put(JSONConstants.STATUS, status);
-            objectToSend.put(JSONConstants.CALLER, jsonObject.get(JSONConstants.CALLER));
-            objectToSend.put(JSONConstants.RECEIVER, jsonObject.get(JSONConstants.RECEIVER));
-        } catch (Exception e) {
-
-        }
-        SocketManager.getInstance().onSend(AppConstants.ACCEPT_REJECT_CALL, objectToSend);
     }
 }

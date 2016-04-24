@@ -35,8 +35,10 @@ public class VideoCallActivity extends Activity implements View.OnClickListener 
         setContentView(R.layout.activity_video_call);
         GLSurfaceView videoView = (GLSurfaceView) findViewById(R.id.video_view);
         peerConnectionManager = new PeerConnectionManager(this);
+        SocketManager.getInstance().setReceiver(peerConnectionManager);
         final String args = getIntent().getStringExtra(JSONConstants.CALL_PARAMS);
         final boolean makeCall = getIntent().getBooleanExtra(JSONConstants.MAKE_CALL, false);
+
         VideoRendererGui.setView(videoView, new Runnable() {
             @Override
             public void run() {
@@ -44,14 +46,11 @@ public class VideoCallActivity extends Activity implements View.OnClickListener 
                 if (makeCall) {
                     peerConnectionManager.makeCall(args);
                 } else {
-                    peerConnectionManager.acceptRejectCall(true, args);
+                    peerConnectionManager.acceptCall(args);
                 }
             }
         });
-        if (getIntent().getStringExtra(JSONConstants.REJECT_CALL) != null) {
-            peerConnectionManager.acceptRejectCall(false, args);
-            finish();
-        }
+
         peerConnectionManager.init();
 
         ImageButton endCallButton = (ImageButton) findViewById(R.id.end_call);

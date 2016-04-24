@@ -31,7 +31,8 @@ android {
 
 dependencies {
     compile fileTree(include: ['*.jar'], dir: 'libs')
-    compile 'com.github.nkzawa:socket.io-client:0.4.2'
     compile 'com.mcxiaoke.volley:library:1.0.19'
     compile 'io.pristine:libjingle:11139@aar'
+    compile 'com.koushikdutta.async:androidasync:2.1.7'
+    compile 'com.google.code.gson:gson:2.6.2'
 }

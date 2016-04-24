@@ -16,17 +16,18 @@ package com.androidhacks7.apprtc_android.utils;
 public class JSONConstants {
 
     public static final String SDP = "sdp";
+
     public static final String SDP_TYPE = "type";
 
-    public static final String OFFER = "offer";
-    public static final String ANSWER = "answer";
+    public static final String OFFER = "Offer";
+    public static final String ANSWER = "Answer";
     public static final String CANDIDATE = "candidate";
     public static final String SDP_MID = "sdpMid";
     public static final String SDP_MID_LINE_INDEX = "sdpMLineIndex";
 
     public static final String STATUS = "status";
-    public static final String CALLER = "caller";
-    public static final String RECEIVER = "receiver";
+    public static final String CALLER = "from";
+    public static final String RECEIVER = "to";
     public static final String INITIATOR = "initiator";
     public static final String PEER = "peer";
 

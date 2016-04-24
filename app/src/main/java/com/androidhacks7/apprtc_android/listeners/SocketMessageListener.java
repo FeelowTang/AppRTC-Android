@@ -13,7 +13,7 @@ package com.androidhacks7.apprtc_android.listeners;
 /**
  * Created by androidhacks7 on 12/20/2015.
  */
-public interface SocketMessageListener extends Receiver {
+public interface SocketMessageListener {
 
     public enum SocketMessage {
         ACCEPT,
